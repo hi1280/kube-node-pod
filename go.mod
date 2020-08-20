@@ -10,6 +10,7 @@ require (
 	github.com/spf13/cobra v1.0.0
 	k8s.io/api v0.18.8 // indirect
 	k8s.io/apimachinery v0.18.8
+	k8s.io/cli-runtime v0.18.8
 	k8s.io/client-go v0.18.8
 	k8s.io/utils v0.0.0-20200815180417-3bc9d57fc792 // indirect
 	sigs.k8s.io/structured-merge-diff v0.0.0-20190525122527-15d366b2352e // indirect
