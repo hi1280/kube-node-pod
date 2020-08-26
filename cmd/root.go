@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strings"
-	"text/tabwriter"
 	"time"
+
+	"github.com/logrusorgru/aurora"
+	"github.com/olekukonko/tablewriter"
 
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,6 +37,17 @@ var rootCmd = &cobra.Command{
 			fmt.Printf("Error connecting to Kubernetes: %v\n", err)
 			os.Exit(1)
 		}
+
+		nodeList, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			fmt.Printf("Error listing Nodes: %v\n", err)
+			os.Exit(1)
+		}
+		nodes := map[string]string{}
+		for i, node := range nodeList.Items {
+			nodes[node.Name] = aurora.Index(uint8(i%6+1), node.Name).String()
+		}
+
 		podList, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
 			fmt.Printf("Error listing Pods: %v\n", err)
@@ -46,25 +58,18 @@ var rootCmd = &cobra.Command{
 			p2 := podList.Items[j]
 			return p1.Spec.NodeName < p2.Spec.NodeName
 		})
-		w := new(tabwriter.Writer)
-		w.Init(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(w, strings.Join([]string{
-			"NODE",
-			"NAMESPACE",
-			"POD",
-			"STATUS",
-			"AGE",
-		}, "\t")+"\n")
+		table := tablewriter.NewWriter(os.Stdout)
+		table.SetHeader([]string{"NODE", "NAMESPACE", "POD", "STATUS", "AGE"})
 		for _, pod := range podList.Items {
-			fmt.Fprintf(w, strings.Join([]string{
-				pod.Spec.NodeName,
+			table.Append([]string{
+				nodes[pod.Spec.NodeName],
 				pod.Namespace,
 				pod.Name,
 				string(pod.Status.Phase),
 				translateTimestampSince(*pod.Status.StartTime),
-			}, "\t")+"\n")
+			})
 		}
-		w.Flush()
+		table.Render()
 	},
 }
 
