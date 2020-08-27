@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
 	"github.com/logrusorgru/aurora"
+	"github.com/mitchellh/go-homedir"
 	"github.com/olekukonko/tablewriter"
 
 	"github.com/spf13/cobra"
@@ -15,11 +17,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/duration"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 var (
-	configFlags          *genericclioptions.ConfigFlags
-	resourceBuilderFlags *genericclioptions.ResourceBuilderFlags
+	configFlags *genericclioptions.ConfigFlags
+	kubeconfig  *rest.Config
 )
 
 var rootCmd = &cobra.Command{
@@ -27,12 +31,7 @@ var rootCmd = &cobra.Command{
 	Short: "",
 	Long:  "",
 	Run: func(cmd *cobra.Command, args []string) {
-		config, err := configFlags.ToRESTConfig()
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-		clientset, err := kubernetes.NewForConfig(config)
+		clientset, err := kubernetes.NewForConfig(kubeconfig)
 		if err != nil {
 			fmt.Printf("Error connecting to Kubernetes: %v\n", err)
 			os.Exit(1)
@@ -82,11 +81,18 @@ func Execute() {
 }
 
 func init() {
-	configFlags = genericclioptions.NewConfigFlags(true)
-	resourceBuilderFlags = genericclioptions.NewResourceBuilderFlags()
-	resourceBuilderFlags.WithAllNamespaces(false)
-	configFlags.AddFlags(rootCmd.PersistentFlags())
-	resourceBuilderFlags.AddFlags(rootCmd.PersistentFlags())
+	var configString string
+	if home, _ := homedir.Dir(); home != "" {
+		rootCmd.PersistentFlags().StringVar(&configString, "kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+	} else {
+		rootCmd.PersistentFlags().StringVar(&configString, "kubeconfig", "", "absolute path to the kubeconfig file")
+	}
+	config, err := clientcmd.BuildConfigFromFlags("", configString)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	kubeconfig = config
 }
 
 func translateTimestampSince(timestamp metav1.Time) string {
