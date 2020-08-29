@@ -28,8 +28,8 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "kube-node-pod",
-	Short: "",
-	Long:  "",
+	Short: "kube-node-pod provides an overview of nodes and pods",
+	Long:  "kube-node-pod provides an overview of nodes and pods",
 	Run: func(cmd *cobra.Command, args []string) {
 		clientset, err := kubernetes.NewForConfig(kubeconfig)
 		if err != nil {
