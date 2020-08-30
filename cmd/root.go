@@ -90,7 +90,7 @@ func fetch() []printPod {
 			namespace: pod.Namespace,
 			nodeName:  nodes[pod.Spec.NodeName],
 			status:    string(pod.Status.Phase),
-			age:       translateTimestampSince(*pod.Status.StartTime),
+			age:       translateTimestampSince(pod.Status.StartTime),
 		})
 	}
 
@@ -136,7 +136,7 @@ func init() {
 	kubeconfig = config
 }
 
-func translateTimestampSince(timestamp metav1.Time) string {
+func translateTimestampSince(timestamp *metav1.Time) string {
 	if timestamp.IsZero() {
 		return "<unknown>"
 	}
