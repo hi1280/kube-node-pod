@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/logrusorgru/aurora"
@@ -31,33 +32,55 @@ var (
 		Long:  "kube-node-pod provides an overview of nodes and pods",
 		Run: func(cmd *cobra.Command, args []string) {
 
-			podList := fetch()
-
-			table := tablewriter.NewWriter(os.Stdout)
-			table.SetHeader([]string{"NODE", "NAMESPACE", "POD", "STATUS", "AGE"})
-			for _, pod := range podList {
-				table.Append([]string{
-					pod.nodeName,
-					pod.namespace,
-					pod.name,
-					pod.status,
-					pod.age,
-				})
-			}
-			table.Render()
+			nodeList, podList := fetch()
+			printNodeList(nodeList, podList)
+			printPodList(nodeList, podList)
 		},
 	}
 )
 
-type printPod struct {
-	name      string
-	namespace string
-	nodeName  string
-	status    string
-	age       string
+type Node struct {
+	name  string
+	taint string
 }
 
-func fetch() []printPod {
+type Pod struct {
+	name       string
+	namespace  string
+	nodeName   string
+	status     string
+	age        string
+	toleration string
+}
+
+func printNodeList(nodeList []Node, podList []Pod) {
+	table := tablewriter.NewWriter(os.Stdout)
+	for _, node := range nodeList {
+		table.Append([]string{
+			node.name,
+			node.taint,
+		})
+	}
+	table.Render()
+}
+
+func printPodList(nodeList []Node, podList []Pod) {
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"NODE", "NAMESPACE", "POD", "STATUS", "AGE"})
+	for _, pod := range podList {
+		table.Append([]string{
+			pod.nodeName,
+			pod.namespace,
+			pod.name,
+			pod.status,
+			pod.age,
+			pod.toleration,
+		})
+	}
+	table.Render()
+}
+
+func fetch() ([]Node, []Pod) {
 	clientset, err := kubernetes.NewForConfig(kubeconfig)
 	if err != nil {
 		fmt.Printf("Error connecting to Kubernetes: %v\n", err)
@@ -76,25 +99,53 @@ func fetch() []printPod {
 		os.Exit(1)
 	}
 
-	nodes := make(map[string]string)
+	var nodes []Node
+	colorNodeNameMap := make(map[string]string)
 	for i, node := range nodeList.Items {
-		nodes[node.Name] = changeColor(i, node.Name)
+		nodes = append(nodes, Node{
+			name:  node.Name,
+			taint: convertTaints(node),
+		})
+		colorNodeNameMap[node.Name] = changeColor(i, node.Name)
 	}
 
 	sortPodList(podList)
 
-	var printPodList []printPod
+	var pods []Pod
 	for _, pod := range podList.Items {
-		printPodList = append(printPodList, printPod{
-			name:      pod.Name,
-			namespace: pod.Namespace,
-			nodeName:  nodes[pod.Spec.NodeName],
-			status:    string(pod.Status.Phase),
-			age:       translateTimestampSince(pod.Status.StartTime),
+		pods = append(pods, Pod{
+			name:       pod.Name,
+			namespace:  pod.Namespace,
+			nodeName:   colorNodeNameMap[pod.Spec.NodeName],
+			status:     string(pod.Status.Phase),
+			age:        translateTimestampSince(pod.Status.StartTime),
+			toleration: convertTolerations(pod),
 		})
 	}
 
-	return printPodList
+	return nodes, pods
+}
+
+func convertTaints(node v1.Node) string {
+	var strs []string
+	for _, taint := range node.Spec.Taints {
+		if taint.Key == "" && taint.Value == "" {
+			continue
+		}
+		strs = append(strs, fmt.Sprintf("%v:%v", taint.Key, taint.Value))
+	}
+	return strings.Join(strs, ",")
+}
+
+func convertTolerations(pod v1.Pod) string {
+	var strs []string
+	for _, toleration := range pod.Spec.Tolerations {
+		if toleration.Key == "" && toleration.Value == "" {
+			continue
+		}
+		strs = append(strs, fmt.Sprintf("%v:%v", toleration.Key, toleration.Value))
+	}
+	return strings.Join(strs, ",")
 }
 
 func changeColor(i int, str string) string {
