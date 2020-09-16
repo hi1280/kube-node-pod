@@ -15,11 +15,18 @@ import (
 
 	"github.com/spf13/cobra"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/duration"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/client-go/discovery"
+	memory "k8s.io/client-go/discovery/cached"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -51,6 +58,7 @@ type Pod struct {
 	status     string
 	age        string
 	toleration string
+	kind       string
 }
 
 func printNodeList(nodeList []Node, podList []Pod) {
@@ -74,7 +82,8 @@ func printPodList(nodeList []Node, podList []Pod) {
 			pod.name,
 			pod.status,
 			pod.age,
-			pod.toleration,
+			pod.kind,
+			// pod.toleration,
 		})
 	}
 	table.Render()
@@ -111,19 +120,110 @@ func fetch() ([]Node, []Pod) {
 
 	sortPodList(podList)
 
+	dyn, err := dynamic.NewForConfig(kubeconfig)
+	if err != nil {
+		fmt.Printf("Error creating dynamic client: %v\n", err)
+		os.Exit(1)
+	}
+
+	dc, err := discovery.NewDiscoveryClientForConfig(kubeconfig)
+	if err != nil {
+		fmt.Printf("Error creating discovery client: %v\n", err)
+		os.Exit(1)
+	}
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
+
 	var pods []Pod
 	for _, pod := range podList.Items {
+		kind := ""
+		obj, err := ownedByPod(pod, mapper, dyn)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		kind = obj.GetKind()
+		for {
+			obj, err = ownedBy(obj, mapper, dyn)
+			if err != nil {
+				fmt.Printf("Error: %v\n", err)
+				os.Exit(1)
+			}
+			if obj == nil {
+				break
+			}
+			kind = obj.GetKind()
+		}
 		pods = append(pods, Pod{
-			name:       pod.Name,
-			namespace:  pod.Namespace,
-			nodeName:   colorNodeNameMap[pod.Spec.NodeName],
-			status:     string(pod.Status.Phase),
-			age:        translateTimestampSince(pod.Status.StartTime),
-			toleration: convertTolerations(pod),
+			name:      pod.Name,
+			namespace: pod.Namespace,
+			nodeName:  colorNodeNameMap[pod.Spec.NodeName],
+			status:    string(pod.Status.Phase),
+			age:       translateTimestampSince(pod.Status.StartTime),
+			kind:      kind,
+			// toleration: convertTolerations(pod),
 		})
 	}
 
 	return nodes, pods
+}
+
+func ownedByPod(obj v1.Pod, mapper *restmapper.DeferredDiscoveryRESTMapper, dyn dynamic.Interface) (*unstructured.Unstructured, error) {
+	var errResult error
+	var out *unstructured.Unstructured
+
+	for _, ownerRef := range obj.GetOwnerReferences() {
+		gv, err := schema.ParseGroupVersion(ownerRef.APIVersion)
+		if err != nil {
+			errResult = err
+		}
+		mapping, err := mapper.RESTMapping(schema.GroupKind{
+			Group: gv.Group,
+			Kind:  ownerRef.Kind,
+		}, gv.Version)
+		if err != nil {
+			errResult = err
+		}
+		var rs dynamic.ResourceInterface
+		if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
+			rs = dyn.Resource(mapping.Resource).Namespace(obj.GetNamespace())
+		} else {
+			rs = dyn.Resource(mapping.Resource)
+		}
+		out, err = rs.Get(context.TODO(), ownerRef.Name, metav1.GetOptions{})
+		if err != nil {
+			errResult = err
+		}
+	}
+	return out, errResult
+}
+
+func ownedBy(obj *unstructured.Unstructured, mapper *restmapper.DeferredDiscoveryRESTMapper, dyn dynamic.Interface) (*unstructured.Unstructured, error) {
+	var errResult error
+	var out *unstructured.Unstructured
+	for _, ownerRef := range obj.GetOwnerReferences() {
+		gv, err := schema.ParseGroupVersion(ownerRef.APIVersion)
+		if err != nil {
+			errResult = err
+		}
+		mapping, err := mapper.RESTMapping(schema.GroupKind{
+			Group: gv.Group,
+			Kind:  ownerRef.Kind,
+		}, gv.Version)
+		if err != nil {
+			errResult = err
+		}
+		var rs dynamic.ResourceInterface
+		if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
+			rs = dyn.Resource(mapping.Resource).Namespace(obj.GetNamespace())
+		} else {
+			rs = dyn.Resource(mapping.Resource)
+		}
+		out, err = rs.Get(context.TODO(), ownerRef.Name, metav1.GetOptions{})
+		if err != nil {
+			errResult = err
+		}
+	}
+	return out, errResult
 }
 
 func convertTaints(node v1.Node) string {
