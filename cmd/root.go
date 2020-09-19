@@ -74,7 +74,7 @@ func printNodeList(nodeList []Node, podList []Pod) {
 
 func printPodList(nodeList []Node, podList []Pod) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"NODE", "NAMESPACE", "POD", "STATUS", "AGE"})
+	table.SetHeader([]string{"NODE", "NAMESPACE", "POD", "STATUS", "AGE", "KIND OWNER"})
 	for _, pod := range podList {
 		table.Append([]string{
 			pod.nodeName,
@@ -135,24 +135,7 @@ func fetch() ([]Node, []Pod) {
 
 	var pods []Pod
 	for _, pod := range podList.Items {
-		kind := ""
-		obj, err := ownedByPod(pod, mapper, dyn)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
-		}
-		kind = obj.GetKind()
-		for {
-			obj, err = ownedBy(obj, mapper, dyn)
-			if err != nil {
-				fmt.Printf("Error: %v\n", err)
-				os.Exit(1)
-			}
-			if obj == nil {
-				break
-			}
-			kind = obj.GetKind()
-		}
+		kind := getKindOwnedBy(pod, mapper, dyn)
 		pods = append(pods, Pod{
 			name:      pod.Name,
 			namespace: pod.Namespace,
@@ -167,40 +150,37 @@ func fetch() ([]Node, []Pod) {
 	return nodes, pods
 }
 
-func ownedByPod(obj v1.Pod, mapper *restmapper.DeferredDiscoveryRESTMapper, dyn dynamic.Interface) (*unstructured.Unstructured, error) {
-	var errResult error
-	var out *unstructured.Unstructured
-
-	for _, ownerRef := range obj.GetOwnerReferences() {
-		gv, err := schema.ParseGroupVersion(ownerRef.APIVersion)
-		if err != nil {
-			errResult = err
-		}
-		mapping, err := mapper.RESTMapping(schema.GroupKind{
-			Group: gv.Group,
-			Kind:  ownerRef.Kind,
-		}, gv.Version)
-		if err != nil {
-			errResult = err
-		}
-		var rs dynamic.ResourceInterface
-		if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
-			rs = dyn.Resource(mapping.Resource).Namespace(obj.GetNamespace())
-		} else {
-			rs = dyn.Resource(mapping.Resource)
-		}
-		out, err = rs.Get(context.TODO(), ownerRef.Name, metav1.GetOptions{})
-		if err != nil {
-			errResult = err
-		}
+func getKindOwnedBy(pod v1.Pod, mapper *restmapper.DeferredDiscoveryRESTMapper, dyn dynamic.Interface) string {
+	kind := ""
+	owners := pod.GetOwnerReferences()
+	namespace := pod.GetNamespace()
+	obj, err := ownedBy(owners, namespace, mapper, dyn)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
 	}
-	return out, errResult
+	kind = obj.GetKind()
+	for {
+		owners = obj.GetOwnerReferences()
+		namespace = obj.GetNamespace()
+		obj, err = ownedBy(owners, namespace, mapper, dyn)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		if obj == nil {
+			break
+		}
+		kind = obj.GetKind()
+	}
+	return kind
 }
 
-func ownedBy(obj *unstructured.Unstructured, mapper *restmapper.DeferredDiscoveryRESTMapper, dyn dynamic.Interface) (*unstructured.Unstructured, error) {
+func ownedBy(owners []metav1.OwnerReference, namespace string, mapper *restmapper.DeferredDiscoveryRESTMapper, dyn dynamic.Interface) (*unstructured.Unstructured, error) {
 	var errResult error
 	var out *unstructured.Unstructured
-	for _, ownerRef := range obj.GetOwnerReferences() {
+
+	for _, ownerRef := range owners {
 		gv, err := schema.ParseGroupVersion(ownerRef.APIVersion)
 		if err != nil {
 			errResult = err
@@ -214,7 +194,7 @@ func ownedBy(obj *unstructured.Unstructured, mapper *restmapper.DeferredDiscover
 		}
 		var rs dynamic.ResourceInterface
 		if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
-			rs = dyn.Resource(mapping.Resource).Namespace(obj.GetNamespace())
+			rs = dyn.Resource(mapping.Resource).Namespace(namespace)
 		} else {
 			rs = dyn.Resource(mapping.Resource)
 		}
