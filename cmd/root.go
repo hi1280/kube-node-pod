@@ -40,18 +40,19 @@ var (
 		Run: func(cmd *cobra.Command, args []string) {
 
 			nodeList, podList := fetch()
-			printNodeList(nodeList, podList)
-			printPodList(nodeList, podList)
+			printNodeList(nodeList)
+			printPodList(podList)
 		},
 	}
 )
 
-type Node struct {
-	name  string
-	taint string
+type printNode struct {
+	name           string
+	taint          string
+	tolerationPods string
 }
 
-type Pod struct {
+type printPod struct {
 	name       string
 	namespace  string
 	nodeName   string
@@ -61,18 +62,19 @@ type Pod struct {
 	kind       string
 }
 
-func printNodeList(nodeList []Node, podList []Pod) {
+func printNodeList(nodeList []printNode) {
 	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"NODE", "ALLOW POD"})
 	for _, node := range nodeList {
 		table.Append([]string{
 			node.name,
-			node.taint,
+			node.tolerationPods,
 		})
 	}
 	table.Render()
 }
 
-func printPodList(nodeList []Node, podList []Pod) {
+func printPodList(podList []printPod) {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"NODE", "NAMESPACE", "POD", "STATUS", "AGE", "KIND OWNER"})
 	for _, pod := range podList {
@@ -83,13 +85,12 @@ func printPodList(nodeList []Node, podList []Pod) {
 			pod.status,
 			pod.age,
 			pod.kind,
-			// pod.toleration,
 		})
 	}
 	table.Render()
 }
 
-func fetch() ([]Node, []Pod) {
+func fetch() ([]printNode, []printPod) {
 	clientset, err := kubernetes.NewForConfig(kubeconfig)
 	if err != nil {
 		fmt.Printf("Error connecting to Kubernetes: %v\n", err)
@@ -108,14 +109,33 @@ func fetch() ([]Node, []Pod) {
 		os.Exit(1)
 	}
 
-	var nodes []Node
+	var nodes []printNode
 	colorNodeNameMap := make(map[string]string)
 	for i, node := range nodeList.Items {
-		nodes = append(nodes, Node{
-			name:  node.Name,
-			taint: convertTaints(node),
-		})
-		colorNodeNameMap[node.Name] = changeColor(i, node.Name)
+		nodename := changeColor(i, node.Name)
+		pods := []string{}
+		if node.Spec.Taints != nil {
+			for _, pod := range podList.Items {
+				if isMatchingTolerations(node.Spec.Taints, pod.Spec.Tolerations) {
+					pods = append(pods, pod.Name)
+				}
+			}
+		}
+		if len(pods) > 0 {
+			for _, pod := range pods {
+				nodes = append(nodes, printNode{
+					name:           nodename,
+					tolerationPods: pod,
+				})
+			}
+		} else {
+			nodes = append(nodes, printNode{
+				name:           nodename,
+				tolerationPods: "*",
+			})
+		}
+
+		colorNodeNameMap[node.Name] = nodename
 	}
 
 	sortPodList(podList)
@@ -133,17 +153,16 @@ func fetch() ([]Node, []Pod) {
 	}
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
 
-	var pods []Pod
+	var pods []printPod
 	for _, pod := range podList.Items {
 		kind := getKindOwnedBy(pod, mapper, dyn)
-		pods = append(pods, Pod{
+		pods = append(pods, printPod{
 			name:      pod.Name,
 			namespace: pod.Namespace,
 			nodeName:  colorNodeNameMap[pod.Spec.NodeName],
 			status:    string(pod.Status.Phase),
 			age:       translateTimestampSince(pod.Status.StartTime),
 			kind:      kind,
-			// toleration: convertTolerations(pod),
 		})
 	}
 
@@ -204,6 +223,28 @@ func ownedBy(owners []metav1.OwnerReference, namespace string, mapper *restmappe
 		}
 	}
 	return out, errResult
+}
+
+func isMatchingTolerations(taints []v1.Taint, tolerations []v1.Toleration) bool {
+	if len(taints) == 0 {
+		return true
+	}
+	if len(tolerations) == 0 && len(taints) > 0 {
+		return false
+	}
+	for i := range taints {
+		tolerated := false
+		for j := range tolerations {
+			if tolerations[j].ToleratesTaint(&taints[i]) {
+				tolerated = true
+				break
+			}
+		}
+		if !tolerated {
+			return false
+		}
+	}
+	return true
 }
 
 func convertTaints(node v1.Node) string {
