@@ -8,15 +8,13 @@ import (
 	"github.com/mitchellh/go-homedir"
 
 	"github.com/spf13/cobra"
-	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 var (
-	configFlags *genericclioptions.ConfigFlags
-	kubeconfig  *rest.Config
-	rootCmd     = &cobra.Command{
+	kubeconfig *rest.Config
+	rootCmd    = &cobra.Command{
 		Use:   "kube-node-pod",
 		Short: "kube-node-pod provides an overview of nodes and pods",
 		Long:  "kube-node-pod provides an overview of nodes and pods",
