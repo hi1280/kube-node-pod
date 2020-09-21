@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/hi1280/kube-node-pod/pkg"
 	"github.com/mitchellh/go-homedir"
 
 	"github.com/spf13/cobra"
@@ -19,10 +20,12 @@ var (
 		Short: "kube-node-pod provides an overview of nodes and pods",
 		Long:  "kube-node-pod provides an overview of nodes and pods",
 		Run: func(cmd *cobra.Command, args []string) {
-
-			nodeList, podList := fetchNodesAndPods()
-			printNodeList(nodeList)
-			printPodList(podList)
+			f := &pkg.Fetch{
+				Config: kubeconfig,
+			}
+			nodeList, podList := f.FetchNodesAndPods()
+			pkg.PrintNodeList(nodeList)
+			pkg.PrintPodList(podList)
 		},
 	}
 )

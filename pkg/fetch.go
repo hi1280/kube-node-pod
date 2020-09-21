@@ -1,4 +1,4 @@
-package cmd
+package pkg
 
 import (
 	"context"
@@ -18,23 +18,37 @@ import (
 	memory "k8s.io/client-go/discovery/cached"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
 )
 
-func fetchNodesAndPods() ([]printNode, []printPod) {
-	clientset, err := kubernetes.NewForConfig(kubeconfig)
+type resource interface {
+	fetch(ownerRef metav1.OwnerReference, namespace string) (*unstructured.Unstructured, error)
+}
+
+type Fetch struct {
+	Config *rest.Config
+}
+
+type unstructuredResource struct {
+	mapper *restmapper.DeferredDiscoveryRESTMapper
+	dyn    dynamic.Interface
+}
+
+func (f *Fetch) FetchNodesAndPods() ([]printNode, []printPod) {
+	clientset, err := kubernetes.NewForConfig(f.Config)
 	if err != nil {
 		fmt.Printf("Error connecting to Kubernetes: %v\n", err)
 		os.Exit(1)
 	}
 
-	dyn, err := dynamic.NewForConfig(kubeconfig)
+	dyn, err := dynamic.NewForConfig(f.Config)
 	if err != nil {
 		fmt.Printf("Error creating dynamic client: %v\n", err)
 		os.Exit(1)
 	}
 
-	dc, err := discovery.NewDiscoveryClientForConfig(kubeconfig)
+	dc, err := discovery.NewDiscoveryClientForConfig(f.Config)
 	if err != nil {
 		fmt.Printf("Error creating discovery client: %v\n", err)
 		os.Exit(1)
@@ -138,15 +152,6 @@ func ownedBy(rs resource, owners []metav1.OwnerReference, namespace string) (*un
 		return rs.fetch(ownerRef, namespace)
 	}
 	return nil, nil
-}
-
-type resource interface {
-	fetch(ownerRef metav1.OwnerReference, namespace string) (*unstructured.Unstructured, error)
-}
-
-type unstructuredResource struct {
-	mapper *restmapper.DeferredDiscoveryRESTMapper
-	dyn    dynamic.Interface
 }
 
 func (u unstructuredResource) fetch(ownerRef metav1.OwnerReference, namespace string) (*unstructured.Unstructured, error) {

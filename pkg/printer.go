@@ -1,4 +1,4 @@
-package cmd
+package pkg
 
 import (
 	"os"
@@ -22,7 +22,7 @@ type printPod struct {
 	kind       string
 }
 
-func printNodeList(nodeList []printNode) {
+func PrintNodeList(nodeList []printNode) {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"NODE", "ALLOW POD"})
 	for _, node := range nodeList {
@@ -34,7 +34,7 @@ func printNodeList(nodeList []printNode) {
 	table.Render()
 }
 
-func printPodList(podList []printPod) {
+func PrintPodList(podList []printPod) {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"NODE", "NAMESPACE", "POD", "STATUS", "AGE", "KIND OWNER"})
 	for _, pod := range podList {
