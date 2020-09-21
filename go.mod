@@ -4,7 +4,7 @@ go 1.14
 
 require (
 	github.com/evanphx/json-patch v4.2.0+incompatible // indirect
-	github.com/googleapis/gnostic v0.5.1 // indirect
+	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/mitchellh/go-homedir v1.1.0
