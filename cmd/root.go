@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/hi1280/kube-node-pod/pkg"
+	"github.com/hi1280/kubectl-node-pod/pkg"
 	"github.com/mitchellh/go-homedir"
 
 	"github.com/spf13/cobra"
@@ -16,9 +16,9 @@ import (
 var (
 	kubeconfig *rest.Config
 	rootCmd    = &cobra.Command{
-		Use:   "kube-node-pod",
-		Short: "kube-node-pod provides an overview of nodes and pods",
-		Long:  "kube-node-pod provides an overview of nodes and pods",
+		Use:   "kubectl node-pod",
+		Short: "provide an overview of nodes and pods",
+		Long:  "provide an overview of nodes and pods",
 		Run: func(cmd *cobra.Command, args []string) {
 			f := &pkg.Fetch{
 				Config: kubeconfig,

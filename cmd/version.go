@@ -12,8 +12,8 @@ func init() {
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print the version number of kube-node-pod",
+	Short: "Print the version number of kubectl node-pod",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("kube-node-pod version 0.0.1")
+		fmt.Println("kubectl node-pod version 0.0.1")
 	},
 }

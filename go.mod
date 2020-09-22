@@ -1,4 +1,4 @@
-module github.com/hi1280/kube-node-pod
+module github.com/hi1280/kubectl-node-pod
 
 go 1.14
 

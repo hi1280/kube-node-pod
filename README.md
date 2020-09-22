@@ -1,10 +1,10 @@
-# kube-node-pod
+# kubectl-node-pod
 
-kube-node-pod provides an overview of nodes and pods. Makes it easier to see the pods scheduled in node.
+Provide an overview of nodes and pods. Makes it easier to see the pods scheduled in node.
 
 ## Installation
 
-Download the binaries from the [GitHub releases page](https://github.com/hi1280/kube-node-pod/releases)
+Download the binaries from the [GitHub releases page](https://github.com/hi1280/kubectl-node-pod/releases)
 ```sh
 cp kubectl-node_pod /usr/local/bin
 ```
